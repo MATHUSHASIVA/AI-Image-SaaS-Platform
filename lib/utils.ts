@@ -10,19 +10,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// ERROR HANDLER
+// ERROR HANDLER - Enhanced with better logging
 export const handleError = (error: unknown) => {
   if (error instanceof Error) {
-    // This is a native JavaScript error (e.g., TypeError, RangeError)
-    console.error(error.message);
+    console.error("Error:", error.message);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Stack trace:", error.stack);
+    }
     throw new Error(`Error: ${error.message}`);
   } else if (typeof error === "string") {
-    // This is a string error message
-    console.error(error);
+    console.error("String error:", error);
     throw new Error(`Error: ${error}`);
   } else {
-    // This is an unknown type of error
-    console.error(error);
+    console.error("Unknown error:", error);
     throw new Error(`Unknown error: ${JSON.stringify(error)}`);
   }
 };
@@ -50,9 +50,8 @@ const toBase64 = (str: string) =>
 export const dataUrl = `data:image/svg+xml;base64,${toBase64(
   shimmer(1000, 1000)
 )}`;
-// ==== End
 
-// FORM URL QUERY
+// FORM URL QUERY - Enhanced with SSR safety
 export const formUrlQuery = ({
   searchParams,
   key,
@@ -60,12 +59,15 @@ export const formUrlQuery = ({
 }: FormUrlQueryParams) => {
   const params = { ...qs.parse(searchParams.toString()), [key]: value };
 
-  return `${window.location.pathname}?${qs.stringify(params, {
+  // Check if we're in the browser before accessing window.location
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  
+  return `${pathname}?${qs.stringify(params, {
     skipNulls: true,
   })}`;
 };
 
-// REMOVE KEY FROM QUERY
+// REMOVE KEY FROM QUERY - Enhanced with SSR safety
 export function removeKeysFromQuery({
   searchParams,
   keysToRemove,
@@ -81,19 +83,22 @@ export function removeKeysFromQuery({
     (key) => currentUrl[key] == null && delete currentUrl[key]
   );
 
-  return `${window.location.pathname}?${qs.stringify(currentUrl)}`;
+  // Check if we're in the browser before accessing window.location
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+
+  return `${pathname}?${qs.stringify(currentUrl)}`;
 }
 
 // DEBOUNCE
 export const debounce = (func: (...args: any[]) => void, delay: number) => {
-  let timeoutId: NodeJS.Timeout | null;
+  let timeoutId: NodeJS.Timeout | null = null;
   return (...args: any[]) => {
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => func.apply(null, args), delay);
   };
 };
 
-// GE IMAGE SIZE
+// GET IMAGE SIZE - Fixed typo in comment
 export type AspectRatioKey = keyof typeof aspectRatioOptions;
 export const getImageSize = (
   type: string,
@@ -109,31 +114,47 @@ export const getImageSize = (
   return image?.[dimension] || 1000;
 };
 
-// DOWNLOAD IMAGE
-export const download = (url: string, filename: string) => {
+// DOWNLOAD IMAGE - Enhanced error handling
+export const download = async (url: string, filename: string) => {
   if (!url) {
     throw new Error("Resource URL not provided! You need to provide one");
   }
 
-  fetch(url)
-    .then((response) => response.blob())
-    .then((blob) => {
-      const blobURL = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobURL;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+    
+    const blob = await response.blob();
+    const blobURL = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobURL;
 
-      if (filename && filename.length)
-        a.download = `${filename.replace(" ", "_")}.png`;
-      document.body.appendChild(a);
-      a.click();
-    })
-    .catch((error) => console.log({ error }));
+    if (filename && filename.length) {
+      a.download = `${filename.replace(/\s+/g, "_")}.png`;
+    }
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Clean up the blob URL
+    URL.revokeObjectURL(blobURL);
+  } catch (error) {
+    console.error("Download failed:", error);
+    handleError(error);
+  }
 };
 
-// DEEP MERGE OBJECTS
-export const deepMergeObjects = (obj1: any, obj2: any) => {
-  if(obj2 === null || obj2 === undefined) {
+// DEEP MERGE OBJECTS - Enhanced type safety
+export const deepMergeObjects = (obj1: any, obj2: any): any => {
+  if (obj2 === null || obj2 === undefined) {
     return obj1;
+  }
+
+  if (obj1 === null || obj1 === undefined) {
+    return obj2;
   }
 
   let output = { ...obj2 };
@@ -143,8 +164,10 @@ export const deepMergeObjects = (obj1: any, obj2: any) => {
       if (
         obj1[key] &&
         typeof obj1[key] === "object" &&
+        !Array.isArray(obj1[key]) &&
         obj2[key] &&
-        typeof obj2[key] === "object"
+        typeof obj2[key] === "object" &&
+        !Array.isArray(obj2[key])
       ) {
         output[key] = deepMergeObjects(obj1[key], obj2[key]);
       } else {
@@ -155,3 +178,24 @@ export const deepMergeObjects = (obj1: any, obj2: any) => {
 
   return output;
 };
+
+export async function retryCloudinaryRequest<T>(
+  operation: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      if (error.http_code === 420 || error.message?.includes('420') || error.message?.includes('Enhance Your Calm')) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`Cloudinary rate limited. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Max retries exceeded for Cloudinary request');
+}

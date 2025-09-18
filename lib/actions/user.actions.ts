@@ -26,13 +26,70 @@ export async function getUserById(userId: string) {
 
     const user = await User.findOne({ clerkId: userId });
 
-    if (!user) throw new Error("User not found");
+    if (!user) {
+      // Instead of throwing an error, return null and let the calling code handle it
+      console.warn(`User not found for clerkId: ${userId}. User may need to be synced from Clerk.`);
+      return null;
+    }
 
     return JSON.parse(JSON.stringify(user));
   } catch (error) {
     handleError(error);
+    return null;
   }
 }
+
+
+
+// GET OR CREATE USER - Fixed to handle existing users properly
+export async function getOrCreateUser(userId: string) {
+  try {
+    await connectToDatabase();
+
+    // First, try to find the existing user
+    let user = await User.findOne({ clerkId: userId });
+
+    if (user) {
+      // User already exists, return it
+      return JSON.parse(JSON.stringify(user));
+    }
+
+    // User doesn't exist, create a new one
+    try {
+      const newUserData = {
+        clerkId: userId,
+        email: `temp_${userId.slice(-8)}@imaginify.com`,
+        username: `user_${userId.slice(-8)}`,
+        photo: `https://img.clerk.com/preview.png`,
+        firstName: "",
+        lastName: "",
+      };
+
+      user = await User.create(newUserData);
+      console.log(`Created new user for clerkId: ${userId}`);
+      
+      return JSON.parse(JSON.stringify(user));
+    } catch (createError: any) {
+      // If creation fails due to duplicate key, try to find the user again
+      // This handles race conditions where another request created the user
+      if (createError.code === 11000) {
+        console.log(`User was created by another request, fetching existing user for clerkId: ${userId}`);
+        const existingUser = await User.findOne({ clerkId: userId });
+        if (existingUser) {
+          return JSON.parse(JSON.stringify(existingUser));
+        }
+      }
+      // Re-throw the error if it's not a duplicate key error
+      throw createError;
+    }
+
+  } catch (error) {
+    handleError(error);
+    return null;
+  }
+}
+
+
 
 // UPDATE
 export async function updateUser(clerkId: string, user: UpdateUserParams) {

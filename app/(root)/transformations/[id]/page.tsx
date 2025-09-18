@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -9,8 +9,10 @@ import { getImageById } from "@/lib/actions/image.actions";
 import { getImageSize } from "@/lib/utils";
 import { DeleteConfirmation } from "@/components/shared/DeleteConfirmation";
 
-const ImageDetails = async ({ params: { id } }: SearchParamProps) => {
-  const { userId } = auth();
+const ImageDetails = async ({ params }: SearchParamProps) => {
+  const { userId } = await auth();
+
+  const { id } = await params;
 
   const image = await getImageById(id);
 
@@ -67,7 +69,7 @@ const ImageDetails = async ({ params: { id } }: SearchParamProps) => {
               width={getImageSize(image.transformationType, image, "width")}
               height={getImageSize(image.transformationType, image, "height")}
               src={image.secureURL}
-              alt="image"
+              alt={`Original ${image.title}`}
               className="transformation-original_image"
             />
           </div>
@@ -80,6 +82,7 @@ const ImageDetails = async ({ params: { id } }: SearchParamProps) => {
             isTransforming={false}
             transformationConfig={image.config}
             hasDownload={true}
+            altText={`${image.transformationType} transformation of ${image.title}`}
           />
         </div>
 

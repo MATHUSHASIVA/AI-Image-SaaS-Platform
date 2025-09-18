@@ -183,9 +183,21 @@ const TransformationForm = ({ action, data = null, userId, type, creditBalance, 
     }
   }, [image, transformationType.config, type])
 
+  // Handle form submission with preventDefault
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    form.handleSubmit(onSubmit)(e);
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form 
+        onSubmit={handleSubmit}
+        className="space-y-8"
+        method="POST"
+        action=""
+      >
         {creditBalance < Math.abs(creditFee) && <InsufficientCreditsModal />}
         <CustomField 
           control={form.control}
@@ -290,6 +302,7 @@ const TransformationForm = ({ action, data = null, userId, type, creditBalance, 
             isTransforming={isTransforming}
             setIsTransforming={setIsTransforming}
             transformationConfig={transformationConfig}
+            altText={`${transformationType.title} transformation of ${form.getValues().title || 'uploaded image'}`}
           />
         </div>
 

@@ -6,7 +6,19 @@ import { PlaceholderValue } from 'next/dist/shared/lib/get-img-props'
 import Image from 'next/image'
 import React from 'react'
 
-const TransformedImage = ({ image, type, title, transformationConfig, isTransforming, setIsTransforming, hasDownload = false }: TransformedImageProps) => {
+// Add this type definition
+type TransformedImageProps = {
+  image: any;
+  type: TransformationTypeKey;
+  title: string;
+  transformationConfig: Transformations | null;
+  isTransforming: boolean;
+  setIsTransforming: React.Dispatch<React.SetStateAction<boolean>>;
+  hasDownload?: boolean;
+  altText?: string; // Add this property
+}
+
+const TransformedImage = ({ image, type, title, transformationConfig, isTransforming, setIsTransforming, hasDownload = false, altText }: TransformedImageProps) => {
   const downloadHandler = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
 
@@ -47,7 +59,7 @@ const TransformedImage = ({ image, type, title, transformationConfig, isTransfor
             width={getImageSize(type, image, "width")}
             height={getImageSize(type, image, "height")}
             src={image?.publicId}
-            alt={image.title}
+            alt={altText || image.title || "Transformed image"}
             sizes={"(max-width: 767px) 100vw, 50vw"}
             placeholder={dataUrl as PlaceholderValue}
             className="transformed-image"
@@ -68,7 +80,7 @@ const TransformedImage = ({ image, type, title, transformationConfig, isTransfor
                 src="/assets/icons/spinner.svg"
                 width={50}
                 height={50}
-                alt="spinner"
+                alt="Loading spinner"
               />
               <p className="text-white/80">Please wait...</p>
             </div>

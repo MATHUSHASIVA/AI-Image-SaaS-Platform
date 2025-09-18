@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 
@@ -8,8 +8,11 @@ import { getUserImages } from "@/lib/actions/image.actions";
 import { getUserById } from "@/lib/actions/user.actions";
 
 const Profile = async ({ searchParams }: SearchParamProps) => {
-  const page = Number(searchParams?.page) || 1;
-  const { userId } = auth();
+  // Await searchParams before accessing its properties
+  const { page: pageParam } = await searchParams;
+  const page = Number(pageParam) || 1;
+  
+  const { userId } = await auth();
 
   if (!userId) redirect("/sign-in");
 
@@ -40,7 +43,7 @@ const Profile = async ({ searchParams }: SearchParamProps) => {
           <div className="mt-4 flex items-center gap-4">
             <Image
               src="/assets/icons/photo.svg"
-              alt="coins"
+              alt="photo"
               width={50}
               height={50}
               className="size-9 md:size-12"

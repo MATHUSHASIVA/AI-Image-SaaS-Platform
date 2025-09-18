@@ -15,7 +15,37 @@ const populateUser = (query: any) => query.populate({
   select: '_id firstName lastName clerkId'
 })
 
-// ADD IMAGE
+// Configure Cloudinary once
+cloudinary.config({
+  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
+})
+
+// Move retry function to the top
+export async function retryCloudinaryRequest<T>(
+  operation: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      if (error.http_code === 420 || error.message?.includes('420') || error.message?.includes('Enhance Your Calm')) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`Cloudinary rate limited. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Max retries exceeded for Cloudinary request');
+}
+
+// ADD IMAGE - Modified to handle rate limiting
 export async function addImage({ image, userId, path }: AddImageParams) {
   try {
     await connectToDatabase();
@@ -26,8 +56,14 @@ export async function addImage({ image, userId, path }: AddImageParams) {
       throw new Error("User not found");
     }
 
+    // Wrap any Cloudinary upload operations with retry logic
+    const processedImage = await retryCloudinaryRequest(async () => {
+      // If you have any Cloudinary upload/transformation here, wrap it
+      return image; // Modify this if you have actual Cloudinary operations
+    });
+
     const newImage = await Image.create({
-      ...image,
+      ...processedImage,
       author: author._id,
     })
 
@@ -39,7 +75,7 @@ export async function addImage({ image, userId, path }: AddImageParams) {
   }
 }
 
-// UPDATE IMAGE
+// UPDATE IMAGE - Modified to handle rate limiting
 export async function updateImage({ image, userId, path }: UpdateImageParams) {
   try {
     await connectToDatabase();
@@ -50,9 +86,15 @@ export async function updateImage({ image, userId, path }: UpdateImageParams) {
       throw new Error("Unauthorized or image not found");
     }
 
+    // Wrap any Cloudinary operations with retry logic
+    const processedImage = await retryCloudinaryRequest(async () => {
+      // If you have any Cloudinary update/transformation here, wrap it
+      return image; // Modify this if you have actual Cloudinary operations
+    });
+
     const updatedImage = await Image.findByIdAndUpdate(
       imageToUpdate._id,
-      image,
+      processedImage,
       { new: true }
     )
 
@@ -64,10 +106,19 @@ export async function updateImage({ image, userId, path }: UpdateImageParams) {
   }
 }
 
-// DELETE IMAGE
+// DELETE IMAGE - Modified to handle Cloudinary deletion
 export async function deleteImage(imageId: string) {
   try {
     await connectToDatabase();
+
+    const imageToDelete = await Image.findById(imageId);
+
+    if (imageToDelete && imageToDelete.publicId) {
+      // Delete from Cloudinary with retry logic
+      await retryCloudinaryRequest(async () => {
+        return await cloudinary.uploader.destroy(imageToDelete.publicId);
+      });
+    }
 
     await Image.findByIdAndDelete(imageId);
   } catch (error) {
@@ -92,7 +143,7 @@ export async function getImageById(imageId: string) {
   }
 }
 
-// GET IMAGES
+// GET IMAGES - Already modified to handle rate limiting
 export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
   limit?: number;
   page: number;
@@ -101,22 +152,19 @@ export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
   try {
     await connectToDatabase();
 
-    cloudinary.config({
-      cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-      secure: true,
-    })
+    // Use retry logic for Cloudinary search
+    const { resources } = await retryCloudinaryRequest(async () => {
+      let expression = 'folder=imaginify';
 
-    let expression = 'folder=imaginify';
+      if (searchQuery) {
+        expression += ` AND ${searchQuery}`
+      }
 
-    if (searchQuery) {
-      expression += ` AND ${searchQuery}`
-    }
-
-    const { resources } = await cloudinary.search
-      .expression(expression)
-      .execute();
+      return await cloudinary.search
+        .expression(expression)
+        .max_results(100)
+        .execute();
+    });
 
     const resourceIds = resources.map((resource: any) => resource.public_id);
 

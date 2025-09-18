@@ -1,17 +1,36 @@
 import Header from '@/components/shared/Header'
 import TransformationForm from '@/components/shared/TransformationForm';
 import { transformationTypes } from '@/constants'
-import { getUserById } from '@/lib/actions/user.actions';
-import { auth } from '@clerk/nextjs';
+import { getOrCreateUser } from '@/lib/actions/user.actions';
+import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 
-const AddTransformationTypePage = async ({ params: { type } }: SearchParamProps) => {
-  const { userId } = auth();
-  const transformation = transformationTypes[type];
+// Create a type for valid transformation types
+type ValidTransformationType = keyof typeof transformationTypes;
 
-  if(!userId) redirect('/sign-in')
+const AddTransformationTypePage = async ({ params }: { params: Promise<{ type: string }> }) => {
+  const { type } = await params;
+  const { userId } = await auth();
+  
+  // Check if type is valid and assert the type
+  if (!(type in transformationTypes)) {
+    notFound();
+  }
+  
+  // Now TypeScript knows type is a valid key
+  const validType = type as ValidTransformationType;
+  const transformation = transformationTypes[validType];
 
-  const user = await getUserById(userId);
+  if(!userId) redirect('/sign-in');
+
+  // This will now create the user if they don't exist
+  const user = await getOrCreateUser(userId);
+  
+  if (!user) {
+    console.error("Failed to get or create user");
+    redirect('/sign-in');
+  }
 
   return (
     <>
