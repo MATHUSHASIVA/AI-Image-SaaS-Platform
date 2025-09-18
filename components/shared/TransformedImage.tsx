@@ -6,16 +6,16 @@ import { PlaceholderValue } from 'next/dist/shared/lib/get-img-props'
 import Image from 'next/image'
 import React from 'react'
 
-// Add this type definition
+// Update this type definition
 type TransformedImageProps = {
   image: any;
   type: TransformationTypeKey;
   title: string;
   transformationConfig: Transformations | null;
   isTransforming: boolean;
-  setIsTransforming: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsTransforming?: React.Dispatch<React.SetStateAction<boolean>>; // Make this optional
   hasDownload?: boolean;
-  altText?: string; // Add this property
+  altText?: string;
 }
 
 const TransformedImage = ({ image, type, title, transformationConfig, isTransforming, setIsTransforming, hasDownload = false, altText }: TransformedImageProps) => {
